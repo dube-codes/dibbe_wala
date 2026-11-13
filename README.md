@@ -1,14 +1,16 @@
 # Dibbe Wala
 
-Dibbe Wala is a small FastAPI service for creating and listing delivery orders, and viewing daily order counts by status. Orders are stored in a local SQLite database.
+## Project overview
+
+Dibbe Wala is my personal learning project for building a small delivery-order API with FastAPI. It stores orders in a local SQLite database and provides an endpoint for daily order counts.
 
 ## Features
 
-- Create delivery orders with a customer name, delivery address, and items.
+- Create orders with a customer name, delivery address, and items.
 - Assign new orders the `preparing` status by default.
 - List orders with optional status filtering and pagination.
 - View daily order totals grouped by status.
-- Create database tables automatically when the application starts.
+- Create database tables automatically when the app starts.
 
 ## Tech stack
 
@@ -22,70 +24,114 @@ Dibbe Wala is a small FastAPI service for creating and listing delivery orders, 
 
 ```text
 .
-├── main.py             # FastAPI app and router setup
-├── database.py         # SQLite engine, session, and table setup
-├── models.py           # Order model, status enum, and data schemas
+├── main.py              # FastAPI app, lifespan, and router setup
+├── database.py          # SQLite engine, session dependency, and table creation
+├── models.py            # Order model, status enum, and schemas
 ├── routes/
-│   ├── orders.py       # Order creation and listing endpoints
-│   └── stats.py        # Daily order statistics endpoint
+│   ├── __init__.py
+│   ├── orders.py        # Create and list orders
+│   └── stats.py         # Daily order statistics
 ├── requirements.txt
 └── README.md
 ```
 
+## Database setup and migrations
+
+The app uses SQLite with the database URL `sqlite:///dabbewala.db`, defined directly in `database.py`. The database file is created in the working directory when the app connects. On startup, the app calls `SQLModel.metadata.create_all()` to create tables. No migration tool or migration files are configured.
+
 ## Installation and setup
 
-Create and activate a virtual environment, then install the project dependencies:
+Clone the repository and move into the project folder:
 
-```bash
-python -m venv .venv
+```text
+git clone <repository-url>
+cd dibbe_wala
 ```
 
-On Windows:
+Create and activate the `venv` environment.
+
+Windows PowerShell:
 
 ```powershell
-.\.venv\Scripts\Activate.ps1
+python -m venv venv
+.\venv\Scripts\Activate.ps1
 ```
 
-On macOS or Linux:
+If PowerShell scripts are blocked, run:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+```
+
+Windows Command Prompt:
+
+```cmd
+python -m venv venv
+venv\Scripts\activate.bat
+```
+
+macOS/Linux (bash/zsh):
 
 ```bash
-source .venv/bin/activate
+python3 -m venv venv
+source venv/bin/activate
 ```
 
 Install dependencies:
 
-```bash
-pip install -r requirements.txt
+```text
+python -m pip install -r requirements.txt
 ```
 
-The application uses SQLite at `sqlite:///dabbewala.db`. It creates the database tables on startup; no separate database service or migration command is configured.
+The codebase does not specify a required Python version.
 
-## Run the project
+## Environment variables
 
-From the project directory, start the development server:
+No environment variables are read by the application. The SQLite database URL is hard-coded in `database.py`.
 
-```bash
-uvicorn main:app --reload
+## How to run
+
+From the project directory, with the environment activated, start the development server:
+
+```text
+python -m uvicorn main:app --reload
 ```
 
-The root endpoint is available at `http://127.0.0.1:8000/`.
+The server uses Uvicorn's default local address and port: `http://127.0.0.1:8000`.
 
 ## API endpoints
 
-All order and statistics routes use the `/api/v1` prefix.
+The API version is set to `v1` in `main.py`. None of the endpoints require authentication.
 
-| Method | Endpoint | Description |
+| Method | Path | Description | Auth | Success status |
+|---|---|---|---|---|
+| `GET` | `/` | Return a welcome message and API version. | None | `200` |
+| `POST` | `/api/v1/orders/` | Create an order. | None | `200` |
+| `GET` | `/api/v1/orders/` | List orders, optionally filtered and paginated. | None | `200` |
+| `GET` | `/api/v1/stats/daily` | Return a date's order counts grouped by status. | None | `200` |
+
+FastAPI returns `422` for request-body or query-parameter validation errors.
+
+### List orders query parameters
+
+| Parameter | Type | Description |
 |---|---|---|
-| `GET` | `/` | Welcome message with the API version |
-| `POST` | `/api/v1/orders/` | Create an order |
-| `GET` | `/api/v1/orders/` | List orders |
-| `GET` | `/api/v1/stats/daily` | Get order counts for a date, grouped by status |
+| `status` | string enum | Optional filter: `preparing`, `picked_up`, `in_transit`, `delivered`, or `cancelled`. |
+| `created_date` | string | Optional creation-date filter described as `YYYY-MM-DD`. Supplying it currently causes an error; see Known limitations. |
+| `skip` | integer | Number of orders to skip. Defaults to `0`; minimum is `0`. |
+| `limit` | integer | Maximum number of orders to return. Defaults to `10`; allowed range is `1` to `100`. |
+
+### Daily statistics query parameter
+
+`stats_date` is an optional date string in `YYYY-MM-DD` format. If omitted, the application uses the server's current date.
+
+## Request/response examples
 
 ### Create an order
 
 `POST /api/v1/orders/`
 
-Request:
+Request body:
 
 ```json
 {
@@ -95,7 +141,9 @@ Request:
 }
 ```
 
-The response contains the created order, including its generated `id`, default `status`, and timestamps:
+All three fields are required strings. `items` is stored as a string, with the model describing it as a comma-separated list.
+
+Example response:
 
 ```json
 {
@@ -104,53 +152,32 @@ The response contains the created order, including its generated `id`, default `
   "delivery_address": "12 Market Road",
   "items": "Lunch box, lemonade",
   "status": "preparing",
-  "created_at": "2026-11-09T12:00:00+00:00",
-  "updated_at": "2026-11-09T12:00:00+00:00"
+  "created_at": "2026-11-13T12:00:00+00:00",
+  "updated_at": "2026-11-13T12:00:00+00:00"
 }
 ```
 
+The ID and timestamps are generated by the database/model.
+
 ### List orders
 
-`GET /api/v1/orders/`
+`GET /api/v1/orders/?status=preparing&skip=0&limit=10`
 
-Optional query parameters:
-
-| Parameter | Description |
-|---|---|
-| `status` | Filter by `preparing`, `picked_up`, `in_transit`, `delivered`, or `cancelled` |
-| `created_date` | Intended to filter by creation date in `YYYY-MM-DD` format; see Known limitations |
-| `skip` | Number of orders to skip; defaults to `0` |
-| `limit` | Maximum orders to return; defaults to `10`, with a maximum of `100` |
-
-Example:
-
-```text
-GET /api/v1/orders/?status=preparing&skip=0&limit=10
-```
-
-The response is a JSON array of order objects using the same fields as the create-order response.
+The response is a JSON array of order objects with the same fields as the create-order response.
 
 ### Get daily statistics
 
-`GET /api/v1/stats/daily`
-
-The optional `stats_date` query parameter accepts a date in `YYYY-MM-DD` format. If omitted, the API uses the current date.
-
-Example:
-
-```text
-GET /api/v1/stats/daily?stats_date=2026-11-09
-```
+`GET /api/v1/stats/daily?stats_date=2026-11-13`
 
 Example response:
 
 ```json
 {
-  "date": "2026-11-09",
-  "total_orders": 3,
+  "date": "2026-11-13",
+  "total_orders": 2,
   "by_status": {
     "preparing": 1,
-    "picked_up": 1,
+    "picked_up": 0,
     "in_transit": 0,
     "delivered": 1,
     "cancelled": 0
@@ -158,22 +185,33 @@ Example response:
 }
 ```
 
-## API documentation
+## Swagger/OpenAPI docs
 
-With the server running, FastAPI's Swagger UI is available at `http://127.0.0.1:8000/docs`. The OpenAPI schema is at `http://127.0.0.1:8000/openapi.json`, and ReDoc is at `http://127.0.0.1:8000/redoc`.
+With the server running, Swagger UI is available at `http://127.0.0.1:8000/docs`, ReDoc at `http://127.0.0.1:8000/redoc`, and the OpenAPI schema at `http://127.0.0.1:8000/openapi.json`.
 
-## Environment variables
+## What I learned
 
-No environment variables are read by the application. The SQLite database URL is currently set directly in `database.py`.
+- Defining FastAPI routes and grouping them with routers.
+- Using a lifespan function to create database tables at startup.
+- Defining SQLModel database models and request/response data.
+- Using a dependency to provide database sessions to routes.
+- Filtering and paginating database queries.
+- Aggregating records by an enum value.
 
 ## Known limitations
 
-- The order-list `created_date` parameter is a string passed to `datetime.combine`, which expects a date value. Supplying this parameter can cause the request to fail.
-- There is no order-update endpoint. An `OrderUpdate` schema exists, but it is not used by a route.
+- Creating an order returns `200 OK`, not `201 Created`.
+- The order-list endpoint returns customer names, delivery addresses, and order items without authentication.
+- `created_date` is declared as a string but passed to `datetime.combine()`, which expects a date object. Requests that supply this parameter can fail.
+- The default statistics date comes from the server's local date, while the query boundaries are built in UTC. These dates can diverge near timezone boundaries.
+- The API version is hard-coded as `v1`; there is no configurable version handling.
+- `OrderUpdate` and `StatusLog` schemas are defined but unused. There is no route to update an order or record a status change.
 
 ## Potential improvements
 
-- Parse and validate `created_date` so the order-list date filter works as intended.
-- Add an order-update endpoint using the existing `OrderUpdate` schema.
-- Add automated tests and database migrations as the project grows.
-- Make the SQLite database URL configurable instead of hard-coding it.
+- Parse and validate `created_date` as a date so the order-list filter works.
+- Add authentication before exposing customer and delivery details.
+- Return `201 Created` when an order is created.
+- Add an order update/status-change route and use the existing schemas where appropriate.
+- Make the database URL configurable and add database migrations.
+- Add automated tests for order creation, filtering, and statistics.
